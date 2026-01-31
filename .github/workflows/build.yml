@@ -6,15 +6,22 @@ on:
       revision:
         description: 'svn revision'
         required: true
-        default: 'r53879'
+        default: 'HEAD'
+      publish:
+        description: 'publish build result to a release'
+        required: true
+        type: boolean
+        default: false
+
 jobs:
   build:
     runs-on: ubuntu-22.04
     strategy:
       matrix:
-        # 你的目标是 K2P，保持不动
+        # 【修改点1】只保留 k2p，节省时间。如果你需要 k2p-mt76，可以在中括号里加上
         profile: [k2p]
     steps:
+      # 【修改点2】升级 checkout 到 v4
       - uses: actions/checkout@v4
       - uses: hendrikmuhs/ccache-action@v1.2
         with:
@@ -26,12 +33,18 @@ jobs:
             fakeroot kmod cpio bc zip git python3-docutils gettext gengetopt gtk-doc-tools \
             autoconf-archive automake autopoint meson texinfo build-essential help2man pkg-config \
             zlib1g-dev libgmp3-dev libmpc-dev libmpfr-dev libncurses5-dev libltdl-dev wget libc-dev-bin
+      # 【修改点3】升级 setup-node 到 v4
       - uses: actions/setup-node@v4
         with:
           node-version: 18
           check-latest: true
       - name: Install npm packages
         run: sudo npm install -g uglify-js uglifycss
+      - uses: robinraju/release-downloader@v1.8
+        with:
+          repository: tsl0922/DD-WRT
+          tag: toolchain
+          fileName: toolchain-mipsel_24kc_gcc-13.1.0_musl.tar.gz
       - name: Extract toolchain
         run: tar zxf toolchain-mipsel_24kc_gcc-13.1.0_musl.tar.gz
       
@@ -43,14 +56,14 @@ jobs:
           # 1. 下载源码
           make checkout
           
-          # 2. 【关键修复】全目录搜索 mk-ca-bundle.pl 并强行修改
-          # 不再指定 src/router/curl，而是用 find . 自动找，解决路径错误问题
+          # 2. 【核心修复】全盘搜索 mk-ca-bundle.pl 并打补丁
+          # 解决 "Failed downloading via HTTPS" 和 "No such file" 错误
           echo "Applying auto-fix for curl certificate issue..."
           find . -name "mk-ca-bundle.pl" -exec sed -i 's/my \$opt_k = 0;/my \$opt_k = 1;/g' {} +
           find . -name "mk-ca-bundle.pl" -exec sed -i 's/\$curl -s -L/\$curl -k -s -L/g' {} +
           echo "Fix applied."
 
-          # 3. 准备编译环境
+          # 3. 准备编译
           make prepare
 
       - name: Configure
@@ -58,7 +71,37 @@ jobs:
       - name: Build
         run: make all
       
+      # 【修改点4】升级 upload-artifact 到 v4
       - uses: actions/upload-artifact@v4
         with:
           name: images
           path: images/*.bin
+
+  publish:
+    needs: [build]
+    runs-on: ubuntu-22.04
+    # 只有当你手动勾选 publish 或者定时触发时才运行
+    if: ${{ github.event_name == 'schedule' || inputs.publish }}
+    steps:
+      - uses: actions/checkout@v4
+      # 【修改点5】下载插件也必须配套升级到 v4
+      - uses: actions/download-artifact@v4
+      - name: Set Tag Name
+        run: echo "TAG_ANME=$(date +%Y%m%d)" >> $GITHUB_ENV
+      - uses: rickstaa/action-create-tag@v1
+        with:
+          tag: ${{ env.TAG_ANME }}
+          force_push_tag: true
+      - uses: ncipollo/release-action@v1
+        with:
+          commit: ${{ github.sha }}
+          tag: ${{ env.TAG_ANME }}
+          artifacts: "images/*.bin"
+          allowUpdates: true
+      - uses: dev-drprasad/delete-older-releases@v0.2.1
+        with:
+          keep_latest: 7
+          delete_tags: true
+          delete_tag_pattern: "20"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
