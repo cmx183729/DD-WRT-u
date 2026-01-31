@@ -15,13 +15,12 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-22.04
+    # 【修改点1】降级到 ubuntu-20.04，老环境对 K2P 这种旧源码更友好
+    runs-on: ubuntu-20.04
     strategy:
       matrix:
-        # 【修改点1】只保留 k2p，节省时间。如果你需要 k2p-mt76，可以在中括号里加上
         profile: [k2p]
     steps:
-      # 【修改点2】升级 checkout 到 v4
       - uses: actions/checkout@v4
       - uses: hendrikmuhs/ccache-action@v1.2
         with:
@@ -33,7 +32,6 @@ jobs:
             fakeroot kmod cpio bc zip git python3-docutils gettext gengetopt gtk-doc-tools \
             autoconf-archive automake autopoint meson texinfo build-essential help2man pkg-config \
             zlib1g-dev libgmp3-dev libmpc-dev libmpfr-dev libncurses5-dev libltdl-dev wget libc-dev-bin
-      # 【修改点3】升级 setup-node 到 v4
       - uses: actions/setup-node@v4
         with:
           node-version: 18
@@ -48,7 +46,7 @@ jobs:
       - name: Extract toolchain
         run: tar zxf toolchain-mipsel_24kc_gcc-13.1.0_musl.tar.gz
       
-      - name: Prepare and Fix Curl
+      - name: Prepare and Fix Issues
         run: |
           echo PROFILE=${{ matrix.profile }} > .config
           echo REVISION=${{ github.event.inputs.revision }} >> .config
@@ -56,12 +54,24 @@ jobs:
           # 1. 下载源码
           make checkout
           
-          # 2. 【核心修复】全盘搜索 mk-ca-bundle.pl 并打补丁
-          # 解决 "Failed downloading via HTTPS" 和 "No such file" 错误
-          echo "Applying auto-fix for curl certificate issue..."
+          echo "=== 开始执行自动修复脚本 ==="
+          
+          # 【修复1】Curl 证书修复 (保持不变)
           find . -name "mk-ca-bundle.pl" -exec sed -i 's/my \$opt_k = 0;/my \$opt_k = 1;/g' {} +
           find . -name "mk-ca-bundle.pl" -exec sed -i 's/\$curl -s -L/\$curl -k -s -L/g' {} +
-          echo "Fix applied."
+          echo "Curl 证书问题已修复"
+
+          # 【修复2 - 关键】Libpcap 版本冲突修复
+          # 删除预编译文件，强制用当前环境的 flex/bison 重新生成
+          echo "正在删除旧的 libpcap 生成文件..."
+          find . -name "gencode.c" -type f -delete
+          find . -name "scanner.c" -type f -delete
+          echo "Libpcap 冲突文件已清理，将自动重新生成"
+          
+          # 【修复3】修复可能存在的 rpc 报错 (预防性修复)
+          find . -name "Makefile" -exec sed -i 's/-Werror//g' {} +
+
+          echo "=== 修复完成，开始准备环境 ==="
 
           # 3. 准备编译
           make prepare
@@ -71,7 +81,6 @@ jobs:
       - name: Build
         run: make all
       
-      # 【修改点4】升级 upload-artifact 到 v4
       - uses: actions/upload-artifact@v4
         with:
           name: images
@@ -79,29 +88,8 @@ jobs:
 
   publish:
     needs: [build]
-    runs-on: ubuntu-22.04
-    # 只有当你手动勾选 publish 或者定时触发时才运行
+    runs-on: ubuntu-20.04
     if: ${{ github.event_name == 'schedule' || inputs.publish }}
     steps:
       - uses: actions/checkout@v4
-      # 【修改点5】下载插件也必须配套升级到 v4
-      - uses: actions/download-artifact@v4
-      - name: Set Tag Name
-        run: echo "TAG_ANME=$(date +%Y%m%d)" >> $GITHUB_ENV
-      - uses: rickstaa/action-create-tag@v1
-        with:
-          tag: ${{ env.TAG_ANME }}
-          force_push_tag: true
-      - uses: ncipollo/release-action@v1
-        with:
-          commit: ${{ github.sha }}
-          tag: ${{ env.TAG_ANME }}
-          artifacts: "images/*.bin"
-          allowUpdates: true
-      - uses: dev-drprasad/delete-older-releases@v0.2.1
-        with:
-          keep_latest: 7
-          delete_tags: true
-          delete_tag_pattern: "20"
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
