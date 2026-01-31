@@ -12,8 +12,7 @@ jobs:
     runs-on: ubuntu-22.04
     strategy:
       matrix:
-        # 【修改点1】你原来的脚本写的是 msg1500，我帮你改成了 k2p
-        # 如果你想编译其他版本，可以在这里改，例如: [k2p-mt76] 或 [k2p-mini]
+        # 你的目标是 K2P，保持不动
         profile: [k2p]
     steps:
       - uses: actions/checkout@v4
@@ -40,12 +39,18 @@ jobs:
         run: |
           echo PROFILE=${{ matrix.profile }} > .config
           echo REVISION=${{ github.event.inputs.revision }} >> .config
+          
+          # 1. 下载源码
           make checkout
           
-          # 【修改点2】这里增加了一行命令，自动修复 curl 证书下载失败的问题
-          # 它会自动找到 mk-ca-bundle.pl 并开启“允许不安全连接”模式
-          find src/router/curl -name "mk-ca-bundle.pl" -exec sed -i 's/my \$opt_k = 0;/my \$opt_k = 1;/g' {} +
-          
+          # 2. 【关键修复】全目录搜索 mk-ca-bundle.pl 并强行修改
+          # 不再指定 src/router/curl，而是用 find . 自动找，解决路径错误问题
+          echo "Applying auto-fix for curl certificate issue..."
+          find . -name "mk-ca-bundle.pl" -exec sed -i 's/my \$opt_k = 0;/my \$opt_k = 1;/g' {} +
+          find . -name "mk-ca-bundle.pl" -exec sed -i 's/\$curl -s -L/\$curl -k -s -L/g' {} +
+          echo "Fix applied."
+
+          # 3. 准备编译环境
           make prepare
 
       - name: Configure
@@ -53,7 +58,6 @@ jobs:
       - name: Build
         run: make all
       
-      # 【修改点3】这里从 v3 升级到了 v4，解决 GitHub Actions 报错
       - uses: actions/upload-artifact@v4
         with:
           name: images
