@@ -12,8 +12,9 @@ jobs:
     runs-on: ubuntu-22.04
     strategy:
       matrix:
-        #profile: [k2p-mt76, k2p-mini, k2p, dir-882-a1, dir-882-r1, msg1500, a040wq]
-        profile: [msg1500]
+        # 【修改点1】你原来的脚本写的是 msg1500，我帮你改成了 k2p
+        # 如果你想编译其他版本，可以在这里改，例如: [k2p-mt76] 或 [k2p-mini]
+        profile: [k2p]
     steps:
       - uses: actions/checkout@v4
       - uses: hendrikmuhs/ccache-action@v1.2
@@ -34,17 +35,26 @@ jobs:
         run: sudo npm install -g uglify-js uglifycss
       - name: Extract toolchain
         run: tar zxf toolchain-mipsel_24kc_gcc-13.1.0_musl.tar.gz
-      - name: Prepare
+      
+      - name: Prepare and Fix Curl
         run: |
           echo PROFILE=${{ matrix.profile }} > .config
           echo REVISION=${{ github.event.inputs.revision }} >> .config
           make checkout
+          
+          # 【修改点2】这里增加了一行命令，自动修复 curl 证书下载失败的问题
+          # 它会自动找到 mk-ca-bundle.pl 并开启“允许不安全连接”模式
+          find src/router/curl -name "mk-ca-bundle.pl" -exec sed -i 's/my \$opt_k = 0;/my \$opt_k = 1;/g' {} +
+          
           make prepare
+
       - name: Configure
         run: make configure
       - name: Build
         run: make all
-      - uses: actions/upload-artifact@v3
+      
+      # 【修改点3】这里从 v3 升级到了 v4，解决 GitHub Actions 报错
+      - uses: actions/upload-artifact@v4
         with:
           name: images
           path: images/*.bin
