@@ -1,22 +1,22 @@
-name: build
+name: build1
 
-on: 
+于: 
   workflow_dispatch:
     inputs:      
       ssh:
         description: 'SSH connection to Actions'
         required: false
-        default: 'true'
+        默认: 'true'
       GPIO KEY :
         description: 'reset putton'
         required: true
-        type: string
-        default: '3'
+        输入: string
+        默认: '3'
       breed-name:
         description: 'Breed bootloader name'
         required: true
-        type: string
-        default: 'breed-mt7621-hiwifi-hc5962.bin'
+        输入: string
+        默认: 'breed-mt7621-hiwifi-hc5962.bin'
 
 
 jobs:
