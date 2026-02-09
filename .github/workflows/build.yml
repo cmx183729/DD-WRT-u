@@ -1,4 +1,4 @@
-name: Build DD-WRT K2P (Final Fix v3)
+name: Build DD-WRT K2P (Final Fix v5)
 
 on:
   workflow_dispatch:
@@ -46,7 +46,7 @@ jobs:
           echo "Recreating Makefile with strict formatting..."
           rm -f Makefile
           
-          # 使用 _TAB_ 占位符重建 Makefile，防止格式错误
+          # 使用 _TAB_ 占位符重建 Makefile
           cat <<'EOF' > Makefile
           TOP_DIR:=$(CURDIR)
           SVN := svn
@@ -166,7 +166,7 @@ jobs:
           _TAB_$(MAKE_ROUTER) $*
           EOF
           
-          # 将 _TAB_ 替换为真正的制表符
+          # 替换 _TAB_
           sed -i 's/_TAB_/\t/g' Makefile
 
       - name: Checkout Source Code
@@ -192,11 +192,13 @@ jobs:
           # 移除全局 Makefile 中的 -Werror
           find . -name "Makefile" -exec sed -i 's/-Werror//g' {} +
 
-          echo "=== 3. 修复 Libpcap 重复定义错误 ==="
-          # 【新增】解决 ftmacros.h 和 pcap-linux.c 中的 _GNU_SOURCE 重复定义警告
-          # 原理：源码里写了 #define _GNU_SOURCE，命令行也传了。这里给它加上 #ifndef 保护，防止报错。
-          echo "Patching libpcap sources..."
-          find dd-wrt/src/router/libpcap -name "*.h" -o -name "*.c" | xargs sed -i 's/#define _GNU_SOURCE/#ifndef _GNU_SOURCE\n#define _GNU_SOURCE\n#endif/g'
+          echo "=== 3. 修复 Libpcap 重复定义错误 (强力删除版) ==="
+          # 这一步非常重要：找到所有源文件，如果里面写了 #define _GNU_SOURCE，就直接删除这一行
+          echo "Deleting conflicting _GNU_SOURCE definitions in libpcap..."
+          find dd-wrt/src/router/libpcap -type f -name "*.[ch]" -print -exec sed -i '/^\s*#\s*define\s\+_GNU_SOURCE/d' {} +
+          
+          echo "Checking if lines were deleted:"
+          grep "_GNU_SOURCE" dd-wrt/src/router/libpcap/pcap-linux.c || echo "Cleaned!"
 
           echo "=== 4. Fix K2P LAN/VLAN ==="
           DEFAULTS_FILE=$(find dd-wrt -name "defaults.c" | grep "services/sysinit")
@@ -236,3 +238,4 @@ jobs:
         env:
          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+
