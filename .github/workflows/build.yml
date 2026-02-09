@@ -1,4 +1,4 @@
-name: Build DD-WRT K2P (Final Fix v2)
+name: Build DD-WRT K2P (Final Fix v3)
 
 on:
   workflow_dispatch:
@@ -46,9 +46,7 @@ jobs:
           echo "Recreating Makefile with strict formatting..."
           rm -f Makefile
           
-          # 【核心修复】
-          # 使用 _TAB_ 作为明确的缩进标记，防止 sed 误伤其他行
-          # 只有带有 _TAB_ 的行才会被转换为制表符缩进
+          # 使用 _TAB_ 占位符重建 Makefile，防止格式错误
           cat <<'EOF' > Makefile
           TOP_DIR:=$(CURDIR)
           SVN := svn
@@ -168,14 +166,13 @@ jobs:
           _TAB_$(MAKE_ROUTER) $*
           EOF
           
-          # 只将 _TAB_ 替换为真正的制表符
+          # 将 _TAB_ 替换为真正的制表符
           sed -i 's/_TAB_/\t/g' Makefile
 
       - name: Checkout Source Code
         run: |
           echo "PROFILE=k2p" > .config
           echo "Checking out SVN revision: ${{ github.event.inputs.revision }}..."
-          # 使用新生成的 Makefile
           make checkout REVISION=${{ github.event.inputs.revision }}
 
       - name: Fix Source Code & LAN Bug
@@ -183,14 +180,25 @@ jobs:
           echo "=== 1. Prepare Patches ==="
           make prepare
 
-          echo "=== 2. Fix Compile Errors ==="
+          echo "=== 2. Fix Compile Errors (Libpcap & Curl) ==="
+          # 修复 mk-ca-bundle
           find . -name "mk-ca-bundle.pl" -exec sed -i 's/my \$opt_k = 0;/my \$opt_k = 1;/g' {} +
           find . -name "mk-ca-bundle.pl" -exec sed -i 's/\$curl -s -L/\$curl -k -s -L/g' {} +
+          
+          # 修复 bison/flex 冲突
           find . -name "gencode.c" -type f -delete
           find . -name "scanner.c" -type f -delete
+          
+          # 移除全局 Makefile 中的 -Werror
           find . -name "Makefile" -exec sed -i 's/-Werror//g' {} +
 
-          echo "=== 3. Fix K2P LAN/VLAN ==="
+          echo "=== 3. 修复 Libpcap 重复定义错误 ==="
+          # 【新增】解决 ftmacros.h 和 pcap-linux.c 中的 _GNU_SOURCE 重复定义警告
+          # 原理：源码里写了 #define _GNU_SOURCE，命令行也传了。这里给它加上 #ifndef 保护，防止报错。
+          echo "Patching libpcap sources..."
+          find dd-wrt/src/router/libpcap -name "*.h" -o -name "*.c" | xargs sed -i 's/#define _GNU_SOURCE/#ifndef _GNU_SOURCE\n#define _GNU_SOURCE\n#endif/g'
+
+          echo "=== 4. Fix K2P LAN/VLAN ==="
           DEFAULTS_FILE=$(find dd-wrt -name "defaults.c" | grep "services/sysinit")
           
           if [ -f "$DEFAULTS_FILE" ]; then
