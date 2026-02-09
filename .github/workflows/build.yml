@@ -1,4 +1,4 @@
-name: Build DD-WRT K2P (Rewrite Makefile)
+name: Build DD-WRT K2P (Final Fix v2)
 
 on:
   workflow_dispatch:
@@ -43,44 +43,43 @@ jobs:
 
       - name: Nuke and Rewrite Makefile
         run: |
-          echo "Detected broken Makefile. Overwriting with correct content..."
+          echo "Recreating Makefile with strict formatting..."
           rm -f Makefile
           
-          # 写入全新的 Makefile (使用 Tab 缩进)
+          # 【核心修复】
+          # 使用 _TAB_ 作为明确的缩进标记，防止 sed 误伤其他行
+          # 只有带有 _TAB_ 的行才会被转换为制表符缩进
           cat <<'EOF' > Makefile
           TOP_DIR:=$(CURDIR)
-
           SVN := svn
           SRC_DIR := $(TOP_DIR)/dd-wrt
           SRC_URL := svn://svn.dd-wrt.com/DD-WRT
           REVISION := HEAD
-
           BUILD_DIR := $(SRC_DIR)/src/router
           LINUX_DIR := $(SRC_DIR)/src/linux/universal/linux-4.14
           TOOLCHAIN_DIR := $(TOP_DIR)/toolchain-mipsel_24kc_gcc-13.1.0_musl
 
           define DefineProfile
-            BOARD=$(1)
-            DTS=$(2)
-            CONFIG=$(3)
-            KCONFIG=$(4)
+          BOARD=$(1)
+          DTS=$(2)
+          CONFIG=$(3)
+          KCONFIG=$(4)
           endef
 
           ifneq ($(wildcard .config),)
-            include .config
+          include .config
           endif
 
           ifeq ($(PROFILE),k2p-mt76)
-            $(eval $(call DefineProfile,k2p,K2P-mt76,mt76.config,mt76.config))
+          $(eval $(call DefineProfile,k2p,K2P-mt76,mt76.config,mt76.config))
           else ifeq ($(PROFILE),k2p)
-            $(eval $(call DefineProfile,k2p,K2P,.config,.config))
+          $(eval $(call DefineProfile,k2p,K2P,.config,.config))
           else ifeq ($(PROFILE),k2p-mini)
-            $(eval $(call DefineProfile,k2p,K2P,mini.config,.config))
+          $(eval $(call DefineProfile,k2p,K2P,mini.config,.config))
           else ifeq ($(PROFILE),msg1500)
-            $(eval $(call DefineProfile,msg1500,MSG1500,.config,.config))
+          $(eval $(call DefineProfile,msg1500,MSG1500,.config,.config))
           else
-            # Default to K2P if profile not found
-            $(eval $(call DefineProfile,k2p,K2P,.config,.config))
+          $(eval $(call DefineProfile,k2p,K2P,.config,.config))
           endif
 
           MAKE_ROUTER := $(MAKE) -C $(BUILD_DIR) -f Makefile.mt7621 BOARD=$(BOARD) DTS=$(DTS) RPROFILE=$(PROFILE)
@@ -91,94 +90,92 @@ jobs:
           export PATH SVN
 
           define PatchDir
-          	@if [ -d $(1) ] && [ "$$(ls $(1) | wc -l)" -gt 0 ]; then \
-          		for p in $(1)/*.patch; do \
-          			echo "== Applying $$p..."; \
-          			for f in $$(grep '^Index: ' $$p | awk '{print $$2}'); do \
-          				svn revert $(SRC_DIR)/$$f; \
-          			done; \
-          			patch -t -d $(SRC_DIR) -p0 < $$p || true; \
-          		done \
-          	fi
+          _TAB_@if [ -d $(1) ] && [ "$$(ls $(1) | wc -l)" -gt 0 ]; then \
+          _TAB_	for p in $(1)/*.patch; do \
+          _TAB_		echo "== Applying $$p..."; \
+          _TAB_		for f in $$(grep '^Index: ' $$p | awk '{print $$2}'); do \
+          _TAB_			svn revert $(SRC_DIR)/$$f; \
+          _TAB_		done; \
+          _TAB_		patch -t -d $(SRC_DIR) -p0 < $$p || true; \
+          _TAB_	done \
+          _TAB_fi
           endef
 
           all:
-          	$(MAKE_ROUTER) kernel
-          	$(MAKE_ROUTER) all
-          	$(MAKE_ROUTER) install
-          	$(MAKE_ROUTER) image
-          	mkdir -p images && cp $(BUILD_DIR)/mipsel-uclibc/dd-wrt-v3.0-*.bin images
+          _TAB_$(MAKE_ROUTER) kernel
+          _TAB_$(MAKE_ROUTER) all
+          _TAB_$(MAKE_ROUTER) install
+          _TAB_$(MAKE_ROUTER) image
+          _TAB_mkdir -p images && cp $(BUILD_DIR)/mipsel-uclibc/dd-wrt-v3.0-*.bin images
 
           checkout:
-          	-[ -d "$(SRC_DIR)" ] && svn cleanup $(SRC_DIR)
-          	$(SVN) co $(SRC_URL) -r $(REVISION) $(SRC_DIR) --depth immediates --quiet --trust-server-cert --non-interactive
-          	@for d1 in $$($(SVN) ls $(SRC_DIR) | grep '/$$'); do \
-          		[ "$$d1" = "ar5315_microredboot/" -o "$$d1" = "redboot/" ] && continue; \
-          		echo "== Updating $$d1"; \
-          		$(SVN) up -r $(REVISION) $(SRC_DIR)/$$d1 --set-depth immediates --quiet --trust-server-cert --non-interactive; \
-          		for d2 in $$($(SVN) ls $(SRC_DIR)/$$d1 | grep '/$$'); do \
-          			echo "== Updating $$d1$$d2"; \
-          			if [ "$$d1$$d2" = "src/linux/" ]; then \
-          				$(SVN) up -r $(REVISION) $(SRC_DIR)/$$d1$$d2 --set-depth immediates --quiet --trust-server-cert --non-interactive; \
-          			else \
-          				$(SVN) up -r $(REVISION) $(SRC_DIR)/$$d1$$d2 --set-depth infinity --quiet --trust-server-cert --non-interactive; \
-          			fi; \
-          		done; \
-          	done
-          	$(SVN) up -r $(REVISION) $(SRC_DIR)/src/linux/$(KERNEL) --set-depth infinity --quiet --trust-server-cert --non-interactive
-          	cp $(TOP_DIR)/files/router/Makefile.mt7621 $(BUILD_DIR)/Makefile.mt7621
-          	cp $(TOP_DIR)/configs/$(BOARD)/$(subst mini,,$(CONFIG)) $(BUILD_DIR)/.config
+          _TAB_-[ -d "$(SRC_DIR)" ] && svn cleanup $(SRC_DIR)
+          _TAB_$(SVN) co $(SRC_URL) -r $(REVISION) $(SRC_DIR) --depth immediates --quiet --trust-server-cert --non-interactive
+          _TAB_@for d1 in $$($(SVN) ls $(SRC_DIR) | grep '/$$'); do \
+          _TAB_	[ "$$d1" = "ar5315_microredboot/" -o "$$d1" = "redboot/" ] && continue; \
+          _TAB_	echo "== Updating $$d1"; \
+          _TAB_	$(SVN) up -r $(REVISION) $(SRC_DIR)/$$d1 --set-depth immediates --quiet --trust-server-cert --non-interactive; \
+          _TAB_	for d2 in $$($(SVN) ls $(SRC_DIR)/$$d1 | grep '/$$'); do \
+          _TAB_		echo "== Updating $$d1$$d2"; \
+          _TAB_		if [ "$$d1$$d2" = "src/linux/" ]; then \
+          _TAB_			$(SVN) up -r $(REVISION) $(SRC_DIR)/$$d1$$d2 --set-depth immediates --quiet --trust-server-cert --non-interactive; \
+          _TAB_		else \
+          _TAB_			$(SVN) up -r $(REVISION) $(SRC_DIR)/$$d1$$d2 --set-depth infinity --quiet --trust-server-cert --non-interactive; \
+          _TAB_		fi; \
+          _TAB_	done; \
+          _TAB_done
+          _TAB_$(SVN) up -r $(REVISION) $(SRC_DIR)/src/linux/$(KERNEL) --set-depth infinity --quiet --trust-server-cert --non-interactive
+          _TAB_cp $(TOP_DIR)/files/router/Makefile.mt7621 $(BUILD_DIR)/Makefile.mt7621
+          _TAB_cp $(TOP_DIR)/configs/$(BOARD)/$(subst mini,,$(CONFIG)) $(BUILD_DIR)/.config
 
           prepare:
-          	$(call PatchDir,$(TOP_DIR)/patches)
-          	$(call PatchDir,$(TOP_DIR)/patches/$(BOARD))
-          	$(call PatchDir,$(TOP_DIR)/patches/drv)
-          	rm -rf $(LINUX_DIR)/drivers/net/ethernet/raeth
-          	rm -rf $(LINUX_DIR)/net/nat/foe_hook
-          	cp -r $(TOP_DIR)/files/linux/drivers $(LINUX_DIR)/
-          	cp -r $(TOP_DIR)/files/linux/include $(LINUX_DIR)/
-          	cp -r $(TOP_DIR)/files/linux/net $(LINUX_DIR)/
-          	cp -r $(TOP_DIR)/files/router/* $(BUILD_DIR)/
-          	cp $(TOP_DIR)/configs/$(BOARD)/dts/$(DTS).dts $(LINUX_DIR)/dts/$(DTS).dts
-          	cp $(TOP_DIR)/configs/$(BOARD)/kernel/$(KCONFIG) $(LINUX_DIR)/.config
-          	cp $(TOP_DIR)/configs/$(BOARD)/$(CONFIG) $(BUILD_DIR)/.config
-          	ln -sf ../../opt $(BUILD_DIR)/opt
-          	cp $(LINUX_DIR)/drivers/net/wireless/Kconfig.dir882 $(LINUX_DIR)/drivers/net/wireless/Kconfig
-          	$(MAKE_ROUTER) gen_revision
+          _TAB_$(call PatchDir,$(TOP_DIR)/patches)
+          _TAB_$(call PatchDir,$(TOP_DIR)/patches/$(BOARD))
+          _TAB_$(call PatchDir,$(TOP_DIR)/patches/drv)
+          _TAB_rm -rf $(LINUX_DIR)/drivers/net/ethernet/raeth
+          _TAB_rm -rf $(LINUX_DIR)/net/nat/foe_hook
+          _TAB_cp -r $(TOP_DIR)/files/linux/drivers $(LINUX_DIR)/
+          _TAB_cp -r $(TOP_DIR)/files/linux/include $(LINUX_DIR)/
+          _TAB_cp -r $(TOP_DIR)/files/linux/net $(LINUX_DIR)/
+          _TAB_cp -r $(TOP_DIR)/files/router/* $(BUILD_DIR)/
+          _TAB_cp $(TOP_DIR)/configs/$(BOARD)/dts/$(DTS).dts $(LINUX_DIR)/dts/$(DTS).dts
+          _TAB_cp $(TOP_DIR)/configs/$(BOARD)/kernel/$(KCONFIG) $(LINUX_DIR)/.config
+          _TAB_cp $(TOP_DIR)/configs/$(BOARD)/$(CONFIG) $(BUILD_DIR)/.config
+          _TAB_ln -sf ../../opt $(BUILD_DIR)/opt
+          _TAB_cp $(LINUX_DIR)/drivers/net/wireless/Kconfig.dir882 $(LINUX_DIR)/drivers/net/wireless/Kconfig
+          _TAB_$(MAKE_ROUTER) gen_revision
 
           configure:
-          	$(MAKE_ROUTER) ncurses-configure ncurses
-          	$(MAKE_ROUTER) zlib-configure zlib
-          	$(MAKE_ROUTER) libffi-configure libffi
-          	$(MAKE_ROUTER) libnl-configure libnl
-          	$(MAKE_ROUTER) libpcap-configure libpcap
-          	$(MAKE_ROUTER) libucontext-configure libucontext
-          	$(MAKE_ROUTER) openssl-configure openssl
-          	$(MAKE_ROUTER) libevent-configure libevent
-          	$(MAKE_ROUTER) curl-configure curl
-          	$(MAKE_ROUTER) gmp-configure gmp
-          	$(MAKE_ROUTER) wolfssl-configure wolfssl
-          	$(MAKE_ROUTER) pcre-configure pcre
-          	$(MAKE_ROUTER) nettle-configure nettle
-          	$(MAKE_ROUTER) configure
+          _TAB_$(MAKE_ROUTER) ncurses-configure ncurses
+          _TAB_$(MAKE_ROUTER) zlib-configure zlib
+          _TAB_$(MAKE_ROUTER) libffi-configure libffi
+          _TAB_$(MAKE_ROUTER) libnl-configure libnl
+          _TAB_$(MAKE_ROUTER) libpcap-configure libpcap
+          _TAB_$(MAKE_ROUTER) libucontext-configure libucontext
+          _TAB_$(MAKE_ROUTER) openssl-configure openssl
+          _TAB_$(MAKE_ROUTER) libevent-configure libevent
+          _TAB_$(MAKE_ROUTER) curl-configure curl
+          _TAB_$(MAKE_ROUTER) gmp-configure gmp
+          _TAB_$(MAKE_ROUTER) wolfssl-configure wolfssl
+          _TAB_$(MAKE_ROUTER) pcre-configure pcre
+          _TAB_$(MAKE_ROUTER) nettle-configure nettle
+          _TAB_$(MAKE_ROUTER) configure
           
           gen_patches:
-          	echo "Skipping gen_patches in CI"
+          _TAB_echo "Skipping gen_patches in CI"
 
           %:
-          	$(MAKE_ROUTER) $*
+          _TAB_$(MAKE_ROUTER) $*
           EOF
           
-          # 将生成的 Makefile 中的空格缩进强制转换为 Tab (以防复制粘贴时 Tab 丢失)
-          sed -i 's/^[ ]\+/\t/g' Makefile
-          # 确保前面几行变量定义没有缩进 (Fix Makefile:7 error)
-          sed -i '1,20s/^\t//g' Makefile
-          
+          # 只将 _TAB_ 替换为真正的制表符
+          sed -i 's/_TAB_/\t/g' Makefile
+
       - name: Checkout Source Code
         run: |
           echo "PROFILE=k2p" > .config
           echo "Checking out SVN revision: ${{ github.event.inputs.revision }}..."
-          # 使用新生成的 Makefile 进行 checkout
+          # 使用新生成的 Makefile
           make checkout REVISION=${{ github.event.inputs.revision }}
 
       - name: Fix Source Code & LAN Bug
@@ -187,15 +184,10 @@ jobs:
           make prepare
 
           echo "=== 2. Fix Compile Errors ==="
-          # 修复 mk-ca-bundle 脚本
           find . -name "mk-ca-bundle.pl" -exec sed -i 's/my \$opt_k = 0;/my \$opt_k = 1;/g' {} +
           find . -name "mk-ca-bundle.pl" -exec sed -i 's/\$curl -s -L/\$curl -k -s -L/g' {} +
-          
-          # 删除冲突文件
           find . -name "gencode.c" -type f -delete
           find . -name "scanner.c" -type f -delete
-          
-          # 移除 -Werror
           find . -name "Makefile" -exec sed -i 's/-Werror//g' {} +
 
           echo "=== 3. Fix K2P LAN/VLAN ==="
@@ -203,15 +195,14 @@ jobs:
           
           if [ -f "$DEFAULTS_FILE" ]; then
             echo "Applying MT7621 VLAN Fix to $DEFAULTS_FILE..."
-            # 强制修正 K2P 的 VLAN 端口 (CPU Port 6t)
             sed -i 's/vlan1ports="0 1 2 3 5t"/vlan1ports="0 1 2 3 6t"/g' "$DEFAULTS_FILE"
             sed -i 's/vlan1ports="1 2 3 4 5t"/vlan1ports="0 1 2 3 6t"/g' "$DEFAULTS_FILE"
             sed -i 's/vlan2ports="4 5t"/vlan2ports="4 6t"/g' "$DEFAULTS_FILE"
             sed -i 's/vlan2ports="0 5t"/vlan2ports="4 6t"/g' "$DEFAULTS_FILE"
-            
             grep -C 2 "vlan1ports" "$DEFAULTS_FILE" | head -n 10
           else
-            echo "Error: defaults.c not found! Skipping patch, but build might have LAN bugs."
+            echo "Error: defaults.c not found!"
+            exit 1
           fi
 
       - name: Configure and Build
