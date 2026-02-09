@@ -12,10 +12,12 @@ on:
         required: true
         type: boolean
         default: false
+  # 保留原 schedule 触发（若有），无则可删除
+  schedule:
+    - cron: ''
 
 jobs:
   build:
-    # 【修改点1】降级到 ubuntu-20.04，老环境对 K2P 这种旧源码更友好
     runs-on: ubuntu-20.04
     strategy:
       matrix:
@@ -51,29 +53,21 @@ jobs:
           echo PROFILE=${{ matrix.profile }} > .config
           echo REVISION=${{ github.event.inputs.revision }} >> .config
           
-          # 1. 下载源码
           make checkout
           
           echo "=== 开始执行自动修复脚本 ==="
-          
-          # 【修复1】Curl 证书修复 (保持不变)
           find . -name "mk-ca-bundle.pl" -exec sed -i 's/my \$opt_k = 0;/my \$opt_k = 1;/g' {} +
           find . -name "mk-ca-bundle.pl" -exec sed -i 's/\$curl -s -L/\$curl -k -s -L/g' {} +
           echo "Curl 证书问题已修复"
 
-          # 【修复2 - 关键】Libpcap 版本冲突修复
-          # 删除预编译文件，强制用当前环境的 flex/bison 重新生成
           echo "正在删除旧的 libpcap 生成文件..."
           find . -name "gencode.c" -type f -delete
           find . -name "scanner.c" -type f -delete
           echo "Libpcap 冲突文件已清理，将自动重新生成"
           
-          # 【修复3】修复可能存在的 rpc 报错 (预防性修复)
           find . -name "Makefile" -exec sed -i 's/-Werror//g' {} +
 
           echo "=== 修复完成，开始准备环境 ==="
-
-          # 3. 准备编译
           make prepare
 
       - name: Configure
@@ -89,7 +83,23 @@ jobs:
   publish:
     needs: [build]
     runs-on: ubuntu-20.04
-    if: ${{ github.event_name == 'schedule' || inputs.publish }}
+    # 修复：修正输入参数作用域 + 显式判断boolean字符串
+    if: ${{ github.event_name == 'schedule' || github.event.inputs.publish == 'true' }}
     steps:
       - uses: actions/checkout@v4
-
+      # 新增：下载build作业上传的images产物
+      - uses: actions/download-artifact@v4
+        with:
+          name: images
+          path: ./images
+      # 新增：创建Release并上传产物（基础版，自动生成版本号）
+      - name: Create Release and Upload Assets
+        uses: softprops/action-gh-release@v2
+        with:
+          # 版本号：分支名-时间戳，可自定义
+          tag_name: build-${{ github.ref_name }}-${{ github.run_id }}
+          name: Build ${{ github.ref_name }}-${{ github.run_id }}
+          body: 自动构建产物 - SVN Revision: ${{ github.event.inputs.revision }}
+          files: ./images/*.bin
+          # 设为预发布（可选，根据需求改为false）
+          prerelease: true
