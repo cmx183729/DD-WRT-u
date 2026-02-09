@@ -6,15 +6,15 @@ on:
       revision:
         description: 'SVN Revision (leave default for latest)'
         required: true
-        default: 'HEAD'
+        默认: 'HEAD'
       ssh:
         description: 'SSH connection for debugging (optional)'
         required: false
-        default: 'false'
+        默认: 'false'
 
 jobs:
   build:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     env:
       # 避免编译过程中的交互提示
       DEBIAN_FRONTEND: noninteractive
@@ -133,3 +133,4 @@ jobs:
         env:
          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+
